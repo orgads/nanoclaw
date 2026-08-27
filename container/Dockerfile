@@ -68,6 +68,20 @@ ENV PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium
 # ~300MB Chromium. We've already installed the system one above.
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
+# ---- Extra CA certificates ---------------------------------------------------
+# Networks that terminate TLS (corporate MITM proxies) re-sign every HTTPS
+# response with a private root. The base image doesn't trust it, so every
+# download below — Bun, bun install, pnpm, npm — fails with
+# "self-signed certificate in certificate chain". Drop the .crt here and the
+# whole build (plus curl/git/node at runtime) trusts it.
+#
+# Empty by default: update-ca-certificates is a no-op with no .crt files, and
+# the README is ignored because only *.crt is processed. Placed above the
+# downloads because they're the layers that need it.
+COPY extra-ca-certs/ /usr/local/share/ca-certificates/
+RUN update-ca-certificates
+ENV NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
+
 # ---- Bun runtime -------------------------------------------------------------
 # Install via the official script (handles multi-arch detection), then move
 # the binary to /usr/local/bin so the non-root `node` user can execute it.
