@@ -82,6 +82,19 @@ COPY extra-ca-certs/ /usr/local/share/ca-certificates/
 RUN update-ca-certificates
 ENV NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
 
+# ---- Proxy bypass for host-local services ------------------------------------
+# The OneCLI gateway injects HTTP_PROXY/HTTPS_PROXY so all agent egress is
+# credential-injected. That proxy cannot serve requests aimed at the host
+# itself: an MCP server published on host.docker.internal answers a direct
+# request but returns an empty reply through the gateway, so the SDK registers
+# the server and silently loads none of its tools.
+#
+# no_proxy matches on the *target* host, so this only exempts host-local
+# traffic. Calls to api.anthropic.com and every other external host still go
+# through the gateway and still get their credentials injected.
+ENV no_proxy=host.docker.internal,localhost,127.0.0.1
+ENV NO_PROXY=host.docker.internal,localhost,127.0.0.1
+
 # ---- Bun runtime -------------------------------------------------------------
 # Install via the official script (handles multi-arch detection), then move
 # the binary to /usr/local/bin so the non-root `node` user can execute it.
