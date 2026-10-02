@@ -32,12 +32,18 @@ const env = readEnvFile([
   'ONECLI_API_KEY',
   'ONECLI_GATEWAY_CONTAINER',
   'ANTHROPIC_BASE_URL',
+  'ANTHROPIC_AUTH_MODE',
   'ONECLI_CONSOLE_URL',
 ]);
 const onecliUrl = process.env.ONECLI_URL || env.ONECLI_URL;
 const onecliApiKey = process.env.ONECLI_API_KEY || env.ONECLI_API_KEY;
 const gatewayContainer = process.env.ONECLI_GATEWAY_CONTAINER || env.ONECLI_GATEWAY_CONTAINER || 'onecli';
 const anthropicBaseUrl = process.env.ANTHROPIC_BASE_URL || env.ANTHROPIC_BASE_URL;
+// Local customization (not in the upstream payload): `oauth` means the vault holds a
+// Claude subscription token (sk-ant-oat01-…), which api.anthropic.com only accepts
+// with `anthropic-beta: oauth-2025-04-20`. The SDK emits that header only in OAuth
+// mode, which it selects from CLAUDE_CODE_OAUTH_TOKEN. Never set both token vars.
+const anthropicAuthMode = (process.env.ANTHROPIC_AUTH_MODE || env.ANTHROPIC_AUTH_MODE)?.trim();
 const onecli = new OneCLI({ url: onecliUrl, apiKey: onecliApiKey });
 const healthUrl = new URL('/v1/health', onecliUrl || 'https://api.onecli.sh').toString();
 const liveLeases = new Set<{ unavailable?: string; notify?: (reason: string) => void }>();
@@ -110,11 +116,17 @@ export async function stubAccountId(config: ContainerConfig): Promise<string | u
   return accountId;
 }
 
-export function withProviderEnv(contribution: OneCLIContribution, baseUrl = anthropicBaseUrl): OneCLIContribution {
+export function withProviderEnv(
+  contribution: OneCLIContribution,
+  baseUrl = anthropicBaseUrl,
+  authMode = anthropicAuthMode,
+): OneCLIContribution {
   if (!baseUrl) return contribution;
+  const token: Record<string, string> =
+    authMode === 'oauth' ? { CLAUDE_CODE_OAUTH_TOKEN: 'gateway-managed' } : { ANTHROPIC_AUTH_TOKEN: 'gateway-managed' };
   return {
     ...contribution,
-    env: { ...contribution.env, ANTHROPIC_BASE_URL: baseUrl, ANTHROPIC_AUTH_TOKEN: 'gateway-managed' },
+    env: { ...contribution.env, ANTHROPIC_BASE_URL: baseUrl, ...token },
   };
 }
 

@@ -17,6 +17,9 @@ importers:
       '@clack/prompts':
         specifier: ^1.2.0
         version: 1.2.0
+      '@onecli-sh/sdk':
+        specifier: 2.2.1
+        version: 2.2.1
       better-sqlite3:
         specifier: 13.0.3
         version: 13.0.3
@@ -337,6 +340,10 @@ packages:
   '@microsoft/teams.graph@2.1.1':
     resolution: {integrity: sha512-oBSvhsUoBx1EPNIK0/UfmipSSYyojVJ5/yvQlO/nQcUV8ZAUQ99KC/QSQY7NLacMplZ+5N4nVO9DuhWvS3/ZpQ==}
     engines: {node: '>=22.12.0'}
+
+  '@onecli-sh/sdk@2.2.1':
+    resolution: {integrity: sha512-q2mCW4ZsARlLEoTxz/P0NQ4MiCh7Z2n28pxkSc7srS+tozyw40PdTnWYW7NI8hfSYplZTx5856Adq1iPi4KN3Q==}
+    engines: {node: '>=20'}
 
   '@opentelemetry/api@1.9.1':
     resolution: {integrity: sha512-gLyJlPHPZYdAk1JENA9LeHejZe1Ti77/pTeFm/nMXmQH/HFZlcS/O2XJB+L8fkbrNSqhdtlvjBVjxwUYanNH5Q==}
@@ -2033,6 +2040,8 @@ snapshots:
     transitivePeerDependencies:
       - debug
       - supports-color
+
+  '@onecli-sh/sdk@2.2.1': {}
 
   '@opentelemetry/api@1.9.1': {}
 

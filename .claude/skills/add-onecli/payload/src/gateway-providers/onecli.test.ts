@@ -253,6 +253,9 @@ describe('OneCLI gateway package', () => {
       },
     });
     expect(withProviderEnv({}, '')).toEqual({});
+    expect(withProviderEnv({ env: { A: '1' } }, 'https://a.example', 'oauth')).toEqual({
+      env: { A: '1', ANTHROPIC_BASE_URL: 'https://a.example', CLAUDE_CODE_OAUTH_TOKEN: 'gateway-managed' },
+    });
     controller.abort();
   });
 
