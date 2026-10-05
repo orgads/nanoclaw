@@ -19,6 +19,7 @@ const envConfig = readEnvFile([
   'NANOCLAW_EGRESS_LOCKDOWN',
   'NANOCLAW_EGRESS_NETWORK',
   'WEBHOOK_PORT',
+  'NANOCLAW_TEMPLATES_DIR',
 ]);
 
 /**
@@ -73,10 +74,12 @@ export const GROUPS_DIR = path.resolve(PROJECT_ROOT, 'groups');
 export const DATA_DIR = path.resolve(PROJECT_ROOT, 'data');
 export const CENTRAL_DB_PATH = path.join(DATA_DIR, 'v2.db');
 // Local agent-template library. Committed but ships empty (+ README). Resolved
-// once at load. Override to another LOCAL path via NANOCLAW_TEMPLATES_DIR; never
-// a remote URL, never an ncl flag, never runtime-mutable.
-export const TEMPLATES_DIR = process.env.NANOCLAW_TEMPLATES_DIR
-  ? path.resolve(process.env.NANOCLAW_TEMPLATES_DIR)
+// once at load. Override to another LOCAL path via NANOCLAW_TEMPLATES_DIR (process
+// env or .env, process env first); never a remote URL, never an ncl flag, never
+// runtime-mutable.
+const TEMPLATES_DIR_OVERRIDE = process.env.NANOCLAW_TEMPLATES_DIR || envConfig.NANOCLAW_TEMPLATES_DIR;
+export const TEMPLATES_DIR = TEMPLATES_DIR_OVERRIDE
+  ? path.resolve(TEMPLATES_DIR_OVERRIDE)
   : path.resolve(PROJECT_ROOT, 'templates');
 
 // Per-checkout image tag so two installs on the same host don't share
