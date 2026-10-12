@@ -115,6 +115,7 @@ const AUTH_ERROR = 'Invalid API key · Fix external API key';
 const OWNER_HINT =
   "Whoever runs this NanoClaw needs to fix this outside the chat. Please don't send keys or passwords here.";
 const AUTH_NOTICE = `${AUTH_ERROR}\n${OWNER_HINT}`;
+const USAGE_LIMIT_HINT = "This NanoClaw's Claude plan is out of usage until then. Try again after it resets.";
 
 async function resultEvents(): Promise<Array<{ text: string | null; isError?: boolean; error?: string }>> {
   const provider = createProvider('claude');
@@ -130,6 +131,9 @@ it.each([
   ['Invalid auth token · Fix external auth token', OWNER_HINT],
   ['Credit balance is too low', OWNER_HINT],
   ['Prompt is too long', 'This conversation got too long. An admin can send /clear to start a new one.'],
+  ["You've hit your session limit · resets 6:40pm (Asia/Jerusalem)", USAGE_LIMIT_HINT],
+  ["You've hit your weekly limit · resets Oct 14, 3pm (UTC)", USAGE_LIMIT_HINT],
+  ["You've hit your limit · resets 3pm", USAGE_LIMIT_HINT],
 ])('uses SDK notice %p plus its chat hint as the error when errors[] is empty', async (result, hint) => {
   sdkMessages.push({ type: 'result', subtype: 'success', is_error: true, result, errors: [] });
   expect(await resultEvents()).toEqual([
@@ -143,6 +147,8 @@ it.each([
   ['an unprefixed upstream message', 'Rate limit reached for tenant private-customer'],
   ['an SDK notice with upstream detail', 'Prompt is too long · automatic compaction failed: API Error: 400 private'],
   ['a multi-line SDK notice', `${AUTH_ERROR}\nsecond line`],
+  ['a usage-limit notice with upstream detail', "You've hit your session limit · resets 6pm · API Error: 429 private"],
+  ['a usage-limit notice with markup', "You've hit your session limit · resets <internal>private</internal>"],
 ])('keeps the generic notice for %s', async (_label, result) => {
   sdkMessages.push({ type: 'result', subtype: 'success', is_error: true, result, errors: [] });
   expect(await resultEvents()).toEqual([{ type: 'result', text: result, isError: true, error: undefined }]);
