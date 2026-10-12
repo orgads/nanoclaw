@@ -168,6 +168,16 @@ const SDK_NOTICES = new Map([
   ['Prompt is too long', 'This conversation got too long. An admin can send /clear to start a new one.'],
 ]);
 
+// The CLI's subscription usage-limit notice ("You've hit your session limit ·
+// resets 6:40pm (Asia/Jerusalem)") names a varying window and reset time, so it
+// can't be an exact entry. The pattern admits only that fixed shape.
+const USAGE_LIMIT_NOTICE = /^You['’]ve hit your [A-Za-z ]{0,30}limit · resets [\w ,:./()+-]{1,60}$/;
+const USAGE_LIMIT_HINT = "This NanoClaw's Claude plan is out of usage until then. Try again after it resets.";
+
+function sdkNoticeHint(notice: string): string | undefined {
+  return SDK_NOTICES.get(notice) ?? (USAGE_LIMIT_NOTICE.test(notice) ? USAGE_LIMIT_HINT : undefined);
+}
+
 /** The real clock for archive names and rotation stamps; tests hand the history functions a fixed one. */
 const REAL_CLOCK = { now: () => Date.now() };
 
@@ -372,7 +382,7 @@ export class ClaudeProvider implements AgentProvider {
           // bodies, so only exact fixed notices are reused; the rest stay generic.
           const candidate = isError && !m.errors?.length ? (m.result?.trim() ?? '') : '';
           // Notice first, hint on its own line: setup's ping shows only the first line.
-          const hint = SDK_NOTICES.get(candidate);
+          const hint = sdkNoticeHint(candidate);
           const resultAsError = hint ? `${candidate}\n${hint}` : '';
           yield {
             type: 'result',
