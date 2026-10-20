@@ -100,6 +100,23 @@ function informedNudges(pushes: string[]): string[] {
   return nudges(pushes).filter((p) => p.includes('<sent_message'));
 }
 
+/** Informed nudges for a turn that ended in `<internal>` text only. */
+function internalOnlyNudges(pushes: string[]): string[] {
+  return pushes.filter((p) => p.includes('ended with only <internal> text') && p.includes('<sent_message'));
+}
+
+/** An edit_message tool send: rewrites an earlier message in place. */
+function toolEdit(id: string, messageId: string, text: string): void {
+  writeMessageOut({
+    id,
+    kind: 'chat',
+    platform_id: 'chan-1',
+    channel_type: 'discord',
+    thread_id: null,
+    content: JSON.stringify({ operation: 'edit', messageId, text }),
+  });
+}
+
 // ── The result door never delivers: streaming-door misses degrade to the nudge ──
 
 describe('result door never delivers content — undelivered turns get the nudge', () => {
@@ -836,6 +853,117 @@ describe('DB-visible sends gate the nudge', () => {
     },
   );
 
+  it.each(PROVIDER_MODES)(
+    'a status edited to "done" then only <internal> text: the nudge recovers the answer (%s)',
+    async (provider, midTurn) => {
+      seedDest();
+      const answer = '<message to="discord-main">Same issue as 01/10.</message>';
+      async function* events(): AsyncGenerator<ProviderEvent> {
+        yield { type: 'init', continuation: 's1' };
+        toolSend('ack-1', 'Checking the call in ADX.');
+        toolEdit('edit-1', 'p-1', 'Done — answer below.');
+        // The answer never went out; the model ends as if it had.
+        yield { type: 'result', text: '<internal>done</internal>' };
+        if (midTurn) yield { type: 'text', text: answer };
+        yield { type: 'result', text: answer };
+      }
+      const { query, pushes } = makeStubQuery(events());
+
+      await processQuery(query, CHAT_ROUTING, ['m1'], provider, undefined, 'prompt', undefined, midTurn);
+
+      expect(internalOnlyNudges(pushes)).toHaveLength(1);
+      expect(pushes).toHaveLength(1);
+      expect(internalOnlyNudges(pushes)[0]).toContain('>Checking the call in ADX.</sent_message>');
+      expect(internalOnlyNudges(pushes)[0]).toContain(
+        '>[edit of an earlier message] Done — answer below.</sent_message>',
+      );
+      expect(internalOnlyNudges(pushes)[0]).not.toContain('<undelivered_text>');
+      expect(deliveredTexts().at(-1)).toBe('Same issue as 01/10.');
+    },
+  );
+
+  it.each(PROVIDER_MODES)(
+    'an answer by tool then only <internal> text: one nudge, and "done" sends nothing more (%s)',
+    async (provider, midTurn) => {
+      seedDest();
+      async function* events(): AsyncGenerator<ProviderEvent> {
+        yield { type: 'init', continuation: 's1' };
+        toolSend('answer-1', 'The answer is 4.');
+        yield { type: 'result', text: '<internal>done</internal>' };
+        yield { type: 'result', text: '<internal>done</internal>' };
+      }
+      const { query, pushes } = makeStubQuery(events());
+
+      await processQuery(query, CHAT_ROUTING, ['m1'], provider, undefined, 'prompt', undefined, midTurn);
+
+      expect(deliveredTexts()).toEqual(['The answer is 4.']);
+      expect(pushes).toHaveLength(1);
+      expect(internalOnlyNudges(pushes)[0]).toContain('>The answer is 4.</sent_message>');
+    },
+  );
+
+  it.each(PROVIDER_MODES)('only <internal> text with nothing sent stays silent (%s)', async (provider, midTurn) => {
+    seedDest();
+    async function* events(): AsyncGenerator<ProviderEvent> {
+      yield { type: 'init', continuation: 's1' };
+      yield { type: 'result', text: '<internal>not addressed to me</internal>' };
+    }
+    const { query, pushes } = makeStubQuery(events());
+
+    await processQuery(query, CHAT_ROUTING, ['m1'], provider, undefined, 'prompt', undefined, midTurn);
+
+    expect(deliveredTexts()).toEqual([]);
+    expect(pushes).toEqual([]);
+  });
+
+  it.each(PROVIDER_MODES)(
+    'a reply block then only <internal> text needs no nudge, even after a status send (%s)',
+    async (provider, midTurn) => {
+      seedDest();
+      const answer = '<message to="discord-main">The answer is 4.</message>';
+      async function* events(): AsyncGenerator<ProviderEvent> {
+        yield { type: 'init', continuation: 's1' };
+        toolSend('ack-1', 'On it');
+        if (midTurn) {
+          yield { type: 'text', text: answer };
+          yield { type: 'result', text: '<internal>done</internal>' };
+        } else yield { type: 'result', text: `${answer}<internal>done</internal>` };
+      }
+      const { query, pushes } = makeStubQuery(events());
+
+      await processQuery(query, CHAT_ROUTING, ['m1'], provider, undefined, 'prompt', undefined, midTurn);
+
+      expect(deliveredTexts()).toEqual(['On it', 'The answer is 4.']);
+      expect(pushes).toEqual([]);
+    },
+  );
+
+  it.each(PROVIDER_MODES)(
+    'a task run ending in <internal> after a tool send is not nudged (%s)',
+    async (provider, midTurn) => {
+      seedDest();
+      async function* events(): AsyncGenerator<ProviderEvent> {
+        yield { type: 'init', continuation: 's1' };
+        toolSend('task-1', 'Daily report.');
+        yield { type: 'result', text: '<internal>sent the report</internal>' };
+      }
+      const { query, pushes } = makeStubQuery(events());
+
+      await processQuery(
+        query,
+        { ...CHAT_ROUTING, taskRun: true },
+        ['m1'],
+        provider,
+        undefined,
+        'prompt',
+        undefined,
+        midTurn,
+      );
+
+      expect(pushes).toEqual([]);
+    },
+  );
+
   it('still nudges a result-door provider whose turn delivered nothing', async () => {
     seedDest();
     async function* events(): AsyncGenerator<ProviderEvent> {
@@ -1102,6 +1230,30 @@ describe('buildInformedWrapNudge', () => {
       DESTS,
     );
     expect(nudge).toContain('<sent_message to="discord-main">[reaction: eyes]</sent_message>');
+  });
+
+  it('without a final text, says the turn ended in <internal> and quotes no undelivered text', () => {
+    const nudge = buildInformedWrapNudge([row(JSON.stringify({ text: 'On it' }))], '', DESTS);
+    expect(nudge).toContain('<system>Your turn ended with only <internal> text.');
+    expect(nudge).not.toContain('undelivered_text');
+    expect(nudge).not.toContain('was not delivered');
+    expect(nudge).toContain('is not the reply');
+  });
+
+  it('labels edits and lists them after new messages, so the cap keeps the answer', () => {
+    const edit = (text: string) => row(JSON.stringify({ operation: 'edit', messageId: 'p-1', text }));
+    const rows = [
+      row(JSON.stringify({ text: 'On it' })),
+      edit('Still checking'),
+      edit('Nearly done'),
+      row(JSON.stringify({ text: 'The answer' })),
+      edit('Done — answer below.'),
+    ];
+    const nudge = buildInformedWrapNudge(rows, '', DESTS);
+    expect(nudge).toContain('>On it</sent_message>\n<sent_message to="discord-main">The answer</sent_message>');
+    expect(nudge).toContain('>[edit of an earlier message] Still checking</sent_message>');
+    expect(nudge).not.toContain('Nearly done');
+    expect(nudge).toContain('(+2 more)');
   });
 
   it('names attachments and tolerates unparseable rows', () => {
